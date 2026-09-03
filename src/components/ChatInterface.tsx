@@ -1,0 +1,344 @@
+import React, { useState, useEffect, useRef, memo } from 'react';
+import { Send, Sparkles } from 'lucide-react';
+import QuickPrompts from './QuickPrompts';
+import { PortfolioData } from '../lib/binance';
+import { generatePersonalisedPrompts } from '../lib/gemini';
+import { calculateRiskScore } from '../lib/risk';
+import { motion, AnimatePresence } from 'motion/react';
+
+// Memoized message component to avoid unnecessary re-renders
+const ChatMessage = memo(({ msg }: { msg: {role: "user"|"assistant", content: string, isGuardian?: boolean} }) => (
+  <motion.div 
+    initial={{ opacity: 0, y: 15 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ duration: 0.2, ease: "easeOut" }}
+    className={`flex gap-3 items-end ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}
+  >
+    <div className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center shadow-sm ${msg.role === 'user' ? 'bg-[#6366f1] text-[#f9fafb] font-bold text-[10px]' : 'bg-[#0d0d0d] text-[#6366f1] border border-[rgba(255,255,255,0.06)]'}`}>
+      {msg.role === 'user' ? 'ME' : <Sparkles className="w-4 h-4" />}
+    </div>
+    <div className={`flex flex-col gap-1 w-full max-w-[75%] md:max-w-[75%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+      {msg.role === 'assistant' && <span className={`text-[10px] ml-1 font-medium tracking-wide uppercase ${msg.isGuardian ? 'text-[#6366f1]' : 'text-[#6b7280]'}`}>{msg.isGuardian ? '👁 Pulse Guardian' : 'Pulse'}</span>}
+      <div className={`p-4 rounded-2xl text-sm leading-relaxed max-w-[65ch] shadow-sm ${msg.role === 'user' ? 'rounded-br-sm bg-[#6366f1] text-[#f9fafb]' : msg.isGuardian ? 'rounded-bl-sm bg-[rgba(99,102,241,0.05)] text-[#f9fafb] border-l-4 border-[#6366f1]' : 'rounded-bl-sm bg-[#0d0d0d] text-[#f9fafb]'}`}>
+        {msg.content}
+      </div>
+    </div>
+  </motion.div>
+));
+ChatMessage.displayName = 'ChatMessage';
+
+export default function ChatInterface({ 
+  portfolio: propPortfolio,
+  isLoading: isExternalLoading = false,
+  pendingMessage,
+  clearPendingMessage
+}: { 
+  portfolio?: PortfolioData;
+  isLoading?: boolean;
+  pendingMessage?: string | null;
+  clearPendingMessage?: () => void;
+}) {
+  const [messages, setMessages] = useState<Array<{role: "user" | "assistant", content: string, isGuardian?: boolean}>>([]);
+  const [inputValue, setInputValue] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [personalisedPrompts, setPersonalisedPrompts] = useState<string[]>([]);
+  const [hasInjectedFirstMessage, setHasInjectedFirstMessage] = useState(false);
+  const [queuedMessage, setQueuedMessage] = useState<string | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const apiKey = sessionStorage.getItem('BINANCE_API_KEY') || '';
+  const apiSecret = sessionStorage.getItem('BINANCE_API_SECRET') || '';
+
+  const getHeaders = () => ({
+    'Content-Type': 'application/json',
+    'x-binance-key': apiKey,
+    'x-binance-secret': apiSecret
+  });
+
+  useEffect(() => {
+    if (!propPortfolio && !isExternalLoading) {
+      fetch('/api/portfolio', { headers: getHeaders() })
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+          if (data && !data.error && data.assets) {
+            setPersonalisedPrompts(generatePersonalisedPrompts(data));
+          }
+        })
+        .catch(err => {
+          console.warn("Background portfolio fetch error in chat:", err?.message || err);
+        });
+    } else if (propPortfolio) {
+      setPersonalisedPrompts(generatePersonalisedPrompts(propPortfolio));
+    }
+  }, [propPortfolio, isExternalLoading]);
+
+  useEffect(() => {
+    if (propPortfolio && propPortfolio.assets.length > 0 && messages.length === 0 && !hasInjectedFirstMessage && !isExternalLoading) {
+      setHasInjectedFirstMessage(true);
+      
+      const timer = setTimeout(() => {
+        const topAsset = [...propPortfolio.assets].sort((a, b) => b.valueUSD - a.valueUSD)[0];
+        const percentage = topAsset ? ((topAsset.valueUSD / propPortfolio.totalValueUSD) * 100).toFixed(1) : 0;
+        const risk = calculateRiskScore(propPortfolio);
+        const mover = [...propPortfolio.assets].sort((a, b) => Math.abs(b.changePercent24h) - Math.abs(a.changePercent24h))[0];
+        const moverSentence = mover ? `${mover.symbol.replace('USDT','')} has been moving significantly, ${mover.changePercent24h >= 0 ? 'up' : 'down'} ${Math.abs(mover.changePercent24h).toFixed(1)}% in the last 24h.` : '';
+        
+        const msg = `Hey — I've just connected to your Binance account. Here's what I'm seeing: your portfolio is worth $${propPortfolio.totalValueUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} with ${propPortfolio.assets.length} active positions. Your biggest holding is ${topAsset ? topAsset.symbol.replace('USDT','') : ''} at ${percentage}% of your portfolio. Risk level is currently ${risk.label}. ${moverSentence} What would you like to dig into?`;
+        
+        setMessages([{ role: 'assistant', content: msg, isGuardian: false }]);
+      }, 1000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [propPortfolio, messages.length, hasInjectedFirstMessage, isExternalLoading]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  useEffect(() => {
+    const alertInterval = setInterval(() => {
+      fetch('/api/alerts/check', { headers: getHeaders() })
+        .then(res => res.json())
+        .then(data => {
+          if (data.triggered && data.triggered.length > 0) {
+            data.triggered.forEach((alert: any) => {
+              const msg = `🚨 Price Alert Triggered!\n\nYour alert for ${alert.symbol} to go ${alert.direction} $${alert.targetPrice.toLocaleString()} has been triggered. The current price is $${alert.currentPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })}.\n\nYour position impact: $${alert.portfolioImpact.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+              setMessages(prev => [...prev, { role: 'assistant', content: msg, isGuardian: true }]);
+            });
+          }
+        })
+        .catch(() => {
+          setMessages(prev => {
+            if (prev.length > 0 && prev[prev.length - 1].content.includes('Pulse lost connection')) return prev;
+            return [...prev, { role: 'assistant', content: '⚠️ Pulse lost connection briefly while checking alerts. Reconnecting...', isGuardian: true }];
+          });
+        });
+
+      fetch('/api/guardian', { headers: getHeaders() })
+        .then(res => res.json())
+        .then(data => {
+          if (data.hasAlert && data.changes && data.changes.length > 0) {
+            const formattedChanges = data.changes.map((c: any) => `- ${c.message}`).join('\n');
+            const msg = `👁 Pulse is watching...\n\nI noticed some significant movements in your portfolio:\n${formattedChanges}`;
+            setMessages(prev => [...prev, { role: 'assistant', content: msg, isGuardian: true }]);
+          }
+        })
+        .catch(() => {
+           setMessages(prev => {
+            if (prev.length > 0 && prev[prev.length - 1].content.includes('Pulse lost connection')) return prev;
+            return [...prev, { role: 'assistant', content: '⚠️ Pulse lost connection briefly. Reconnecting...', isGuardian: true }];
+          });
+        });
+    }, 15000);
+
+    return () => clearInterval(alertInterval);
+  }, []);
+
+  const handleSend = async (text: string) => {
+    if (!text.trim()) return;
+    
+    const newHistory = [...messages, { role: "user" as const, content: text }];
+    setMessages(newHistory);
+    setInputValue("");
+    setIsLoading(true);
+
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ message: text, conversationHistory: messages })
+      });
+      
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to fetch chat response');
+      }
+      
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      
+      let fullResponse = "";
+      setMessages(prev => [...prev, { role: 'assistant', content: '' }]);
+
+      let done = false;
+      while (!done) {
+        const { value, done: readerDone } = await reader.read();
+        done = readerDone;
+        if (value) {
+          const chunk = decoder.decode(value, { stream: true });
+          fullResponse += chunk;
+          setMessages(prev => {
+            const newMsgs = [...prev];
+            newMsgs[newMsgs.length - 1] = { ...newMsgs[newMsgs.length - 1], content: fullResponse };
+            return newMsgs;
+          });
+        }
+      }
+
+      // Handle JSON commands AFTER full stream
+      try {
+        const jsonMatch = fullResponse.match(/\{[\s\S]*"action"[\s\S]*\}/);
+        if (jsonMatch) {
+          const command = JSON.parse(jsonMatch[0]);
+          if (command.action === "set_alert") {
+             const setRes = await fetch('/api/alerts/set', {
+               method: 'POST',
+               headers: getHeaders(),
+               body: JSON.stringify({ symbol: command.symbol, targetPrice: command.targetPrice, direction: command.direction })
+             });
+             if (setRes.ok) {
+               setMessages(prev => {
+                 const newMsgs = [...prev];
+                 newMsgs[newMsgs.length - 1].content = `✅ Price alert set for ${command.symbol} ${command.direction} $${command.targetPrice.toLocaleString()}`;
+                 return newMsgs;
+               });
+             }
+          } else if (command.action === "get_summary") {
+             const sumRes = await fetch('/api/summary', { headers: getHeaders() });
+             if (sumRes.ok) {
+               const summary = await sumRes.json();
+               setMessages(prev => {
+                 const newMsgs = [...prev];
+                 newMsgs[newMsgs.length - 1].content = summary.insight || "Here is your portfolio summary.";
+                 return newMsgs;
+               });
+             }
+          }
+        }
+      } catch (e) {
+        // Not a JSON command, leave it as plain text
+      }
+
+    } catch (error: any) {
+      console.error(error);
+      setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${error.message || 'I encountered an issue. Please try again.'}` }]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (pendingMessage) {
+      if (isLoading) {
+        setQueuedMessage(pendingMessage);
+      } else {
+        handleSend(pendingMessage);
+      }
+      clearPendingMessage?.();
+    }
+  }, [pendingMessage, isLoading, clearPendingMessage]);
+
+  useEffect(() => {
+    if (!isLoading && queuedMessage) {
+      handleSend(queuedMessage);
+      setQueuedMessage(null);
+    }
+  }, [isLoading, queuedMessage]);
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (!inputValue.trim()) return;
+      if (isLoading) {
+        setQueuedMessage(inputValue);
+        setInputValue("");
+      } else {
+        handleSend(inputValue);
+      }
+    }
+  };
+
+  if (isExternalLoading) {
+    return (
+      <div className="flex flex-col h-full bg-[#0d0d0d] md:rounded-2xl border-t md:border border-[rgba(255,255,255,0.06)] flex-1 md:overflow-hidden relative shadow-sm animate-pulse">
+        <div className="p-4 border-b border-[rgba(255,255,255,0.06)] flex items-center gap-3 bg-[#000000]/40 shrink-0">
+          <div className="w-3 h-3 rounded-full bg-[rgba(255,255,255,0.06)]"></div>
+          <div className="h-4 bg-[rgba(255,255,255,0.06)] rounded w-32"></div>
+        </div>
+        <div className="flex-1 p-4 flex flex-col gap-6 justify-end">
+          <div className="flex gap-3 items-end flex-row-reverse">
+            <div className="w-8 h-8 rounded-full bg-[rgba(255,255,255,0.06)] flex-shrink-0"></div>
+            <div className="h-12 w-[60%] bg-[rgba(255,255,255,0.06)] rounded-2xl rounded-br-sm"></div>
+          </div>
+          <div className="flex gap-3 items-end">
+            <div className="w-8 h-8 rounded-full bg-[rgba(255,255,255,0.06)] flex-shrink-0"></div>
+            <div className="h-20 w-[75%] bg-[rgba(255,255,255,0.06)] rounded-2xl rounded-bl-sm"></div>
+          </div>
+        </div>
+        <div className="p-4 bg-[#000000] border-t border-[rgba(255,255,255,0.06)] shrink-0">
+          <div className="h-14 w-full bg-[rgba(255,255,255,0.06)] rounded-xl"></div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-full bg-[#0d0d0d] md:rounded-2xl border-t md:border border-[rgba(255,255,255,0.06)] shadow-sm flex-1 md:overflow-hidden relative">
+      <div className="p-4 border-b border-[rgba(255,255,255,0.06)] flex items-center gap-3 bg-[#000000]/40 shrink-0">
+        <div className="relative flex items-center justify-center w-3 h-3">
+          <div className="absolute w-full h-full rounded-full bg-[#6366f1] animate-ping opacity-75"></div>
+          <div className="relative w-2 h-2 rounded-full bg-[#6366f1]"></div>
+        </div>
+        <span className="text-sm font-semibold text-[#f9fafb] tracking-wide">Pulse</span>
+      </div>
+      
+      <div className="flex-1 p-4 overflow-y-auto flex flex-col gap-5 pb-32 md:pb-4" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.06) transparent' }}>
+        {messages.length === 0 && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex-1 flex flex-col items-center justify-center text-center text-[#6b7280] p-6 h-full">
+            <Sparkles className="w-10 h-10 text-[#6366f1]/50 mb-4" />
+            <p className="text-base font-medium text-[#f9fafb]">I'm Pulse.</p>
+            <p className="text-sm mt-2 max-w-[250px]">I'm connected to your live portfolio. Ask me anything about your positions, risk, or market context.</p>
+          </motion.div>
+        )}
+        
+        <AnimatePresence initial={false}>
+          {messages.map((msg, i) => (
+            <ChatMessage key={i} msg={msg} />
+          ))}
+          
+          {isLoading && (
+            <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="flex gap-3 items-end">
+              <div className="w-8 h-8 rounded-full bg-[#0d0d0d] flex-shrink-0 flex items-center justify-center text-[#6366f1] border border-[rgba(255,255,255,0.06)] shadow-sm">
+                <Sparkles className="w-4 h-4" />
+              </div>
+              <div className="p-3.5 rounded-2xl rounded-bl-sm bg-[#0d0d0d] border border-[rgba(255,255,255,0.06)] flex gap-1.5 items-center h-11">
+                <span className="w-1.5 h-1.5 bg-[#6b7280] rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                <span className="w-1.5 h-1.5 bg-[#6b7280] rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                <span className="w-1.5 h-1.5 bg-[#6b7280] rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+        <div ref={messagesEndRef} className="h-1" />
+      </div>
+      
+      <div className="absolute md:relative bottom-0 left-0 right-0 p-4 bg-[#0d0d0d]/95 backdrop-blur-sm border-t border-[rgba(255,255,255,0.06)] shrink-0 z-10" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+        {messages.length === 0 && personalisedPrompts.length > 0 && !hasInjectedFirstMessage && (
+          <QuickPrompts prompts={personalisedPrompts} onSelect={handleSend} />
+        )}
+        <div className="relative group">
+          <input 
+            type="text" 
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={isLoading ? "Type a message to send next..." : "Ask about your portfolio..."}
+            className="w-full bg-[#000000] border border-[rgba(255,255,255,0.06)] rounded-xl py-4 px-4 text-sm text-[#f9fafb] focus:outline-none focus:border-[#6366f1] focus:ring-1 focus:ring-[#6366f1]/50 transition-all pr-14 shadow-inner min-h-[52px]" 
+          />
+          <button 
+            onClick={() => {
+              if (!inputValue.trim() || isLoading) return;
+              handleSend(inputValue);
+            }}
+            disabled={isLoading || !inputValue.trim()}
+            className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 flex items-center justify-center rounded-lg text-[#6b7280] hover:text-[#f9fafb] hover:bg-[#6366f1] active:scale-95 disabled:hover:bg-transparent disabled:opacity-50 transition-all duration-200 ease-in-out"
+            aria-label="Send message"
+          >
+            <Send className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

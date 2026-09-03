@@ -1,0 +1,8 @@
+{
+  "name": "Pulse",
+  "description": "An AI-powered financial companion connecting to Binance.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

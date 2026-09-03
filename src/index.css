@@ -1,0 +1,28 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --color-background: #000000;
+  --color-primary: #6366f1;
+}
+
+@layer base {
+  html, body {
+    @apply bg-[var(--color-background)] text-white;
+    color-scheme: dark;
+    font-family: 'Inter', sans-serif;
+    font-size: 15px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+@keyframes shimmer {
+  0% { background-position: -1000px 0; }
+  100% { background-position: 1000px 0; }
+}
+.shimmer {
+  background: linear-gradient(90deg, #0d0d0d 25%, #1a1a1a 50%, #0d0d0d 75%);
+  background-size: 1000px 100%;
+  animation: shimmer 2s infinite linear;
+}
