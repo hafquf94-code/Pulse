@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { X, Loader2 } from 'lucide-react';
 import { motion } from 'motion/react';
@@ -24,7 +24,33 @@ export default function LandingPage() {
   const [apiSecret, setApiSecret] = useState("");
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectionError, setConnectionError] = useState("");
+  const [installPrompt, setInstallPrompt] = useState<any>(null);
+  const [showInstallBanner, setShowInstallBanner] = useState(false);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      setInstallPrompt(e);
+      setShowInstallBanner(true);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!installPrompt) return;
+    try {
+      await installPrompt.prompt();
+    } catch (err) {
+      console.error("Install prompt error:", err);
+    } finally {
+      setShowInstallBanner(false);
+    }
+  };
 
   const handleConnect = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -73,7 +99,31 @@ export default function LandingPage() {
 
   return (
     <div className="min-h-screen bg-black text-[#f9fafb] font-sans relative selection:bg-[#6366f1]/30 overflow-x-hidden">
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-black/60 backdrop-blur-xl border-b border-white/5 transition-all">
+      {/* Install banner at the very top of the page (above navbar) */}
+      {showInstallBanner && (
+        <div className="fixed top-0 left-0 right-0 z-60 bg-[#6366f1] text-white py-2 px-4 flex items-center justify-between shadow-md">
+          <span className="text-xs sm:text-sm font-medium">
+            Install Pulse on your home screen for the best experience
+          </span>
+          <div className="flex items-center gap-3 shrink-0 ml-3">
+            <button
+              onClick={handleInstallClick}
+              className="px-3 py-1 bg-white text-[#6366f1] text-xs font-bold rounded-lg hover:bg-white/90 transition shadow-sm cursor-pointer"
+            >
+              Install
+            </button>
+            <button
+              onClick={() => setShowInstallBanner(false)}
+              className="text-white/80 hover:text-white p-1 transition cursor-pointer"
+              aria-label="Dismiss banner"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      <nav className={`fixed ${showInstallBanner ? 'top-10' : 'top-0'} left-0 right-0 z-50 bg-black/60 backdrop-blur-xl border-b border-white/5 transition-all`}>
         <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2 text-[#f9fafb] font-bold text-lg tracking-tight">
             <div className="w-2.5 h-2.5 rounded-full bg-[#6366f1]"></div>

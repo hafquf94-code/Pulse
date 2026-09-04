@@ -4,7 +4,9 @@ import { RefreshCw, Wallet } from 'lucide-react';
 import { PortfolioData } from '../lib/binance';
 import { RiskResult, calculateRiskScore } from '../lib/risk';
 import { Alert, generateAlerts } from '../lib/alerts';
+import { calculatePulseScore, PulseScoreResult } from '../lib/pulseScore';
 import RiskScore from './RiskScore';
+import PulseScore from './PulseScore';
 import ProactiveAlerts from './ProactiveAlerts';
 import { useCountUp } from '../hooks/useCountUp';
 import { motion } from 'motion/react';
@@ -57,11 +59,12 @@ export default function PortfolioDashboard({
   const animatedTotalValue = useCountUp(portfolio?.totalValueUSD || 0, 1000);
   const [selectedAsset, setSelectedAsset] = useState<string | null>(null);
 
-  const { risk, alerts, chartData, changeUSD, changePct } = useMemo(() => {
-    if (!portfolio) return { risk: propRisk, alerts: propAlerts, chartData: [], changeUSD: 0, changePct: 0 };
+  const { risk, alerts, pulseScore, chartData, changeUSD, changePct } = useMemo(() => {
+    if (!portfolio) return { risk: propRisk, alerts: propAlerts, pulseScore: undefined, chartData: [], changeUSD: 0, changePct: 0 };
     
     const calculatedRisk = propRisk || calculateRiskScore(portfolio);
     const calculatedAlerts = propAlerts || generateAlerts(portfolio);
+    const pulseScore = calculatePulseScore(portfolio, calculatedRisk);
     
     const top5 = portfolio.assets.slice(0, 5);
     const othersValue = portfolio.assets.slice(5).reduce((sum, a) => sum + a.valueUSD, 0);
@@ -75,7 +78,7 @@ export default function PortfolioDashboard({
     const cUSD = portfolio.totalValueUSD - totalPrev;
     const cPct = totalPrev > 0 ? (cUSD / totalPrev) * 100 : 0;
 
-    return { risk: calculatedRisk, alerts: calculatedAlerts, chartData, changeUSD: cUSD, changePct: cPct };
+    return { risk: calculatedRisk, alerts: calculatedAlerts, pulseScore, chartData, changeUSD: cUSD, changePct: cPct };
   }, [portfolio, propRisk, propAlerts]);
 
   if (!portfolio) {
@@ -134,13 +137,16 @@ export default function PortfolioDashboard({
         </p>
       </div>
 
-      {/* 2. Risk Score card */}
+      {/* 2. Pulse Score */}
+      {pulseScore && <PulseScore pulseScore={pulseScore} />}
+
+      {/* 3. Risk Score card */}
       <RiskScore risk={risk} />
 
-      {/* 3. Proactive Alerts */}
+      {/* 4. Proactive Alerts */}
       <ProactiveAlerts alerts={alerts} onAlertClick={onAlertClick} />
 
-      {/* 4. Donut chart + Holdings */}
+      {/* 5. Donut chart + Holdings */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
          
          <div className="p-6 rounded-2xl bg-[#0d0d0d] border border-[rgba(255,255,255,0.06)] shadow-sm lg:col-span-2">

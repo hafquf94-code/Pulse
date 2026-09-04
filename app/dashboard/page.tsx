@@ -1,14 +1,18 @@
 "use client";
 import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LogOut, Settings, X, AlertTriangle, RefreshCw, Info } from 'lucide-react';
+import { LogOut, Settings, X, AlertTriangle, RefreshCw, Info, Newspaper, Eye } from 'lucide-react';
 import PortfolioDashboard from '../../src/components/PortfolioDashboard';
+import PortfolioHistory from '../../src/components/PortfolioHistory';
 import ChatInterface from '../../src/components/ChatInterface';
+import CryptoNews from '../../src/components/CryptoNews';
+import Watchlist from '../../src/components/Watchlist';
 import { PortfolioData } from '../../src/lib/binance';
 import { Alert } from '../../src/lib/alerts';
 
 export default function DashboardPage() {
   const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState<'overview' | 'history' | 'news' | 'watchlist'>('overview');
   const [loading, setLoading] = useState(true);
   const [portfolio, setPortfolio] = useState<(PortfolioData & { isDemoFallback?: boolean; warning?: string }) | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
@@ -194,7 +198,63 @@ export default function DashboardPage() {
         <div className="flex-1 flex flex-col lg:flex-row h-full">
           
           <div className={`w-full lg:w-[45%] xl:w-[45%] h-auto lg:h-full overflow-y-auto border-r border-white/5 ${compactMode ? 'p-3' : 'p-4 md:p-6'}`} style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.06) transparent' }}>
-            <PortfolioDashboard portfolio={portfolio} onRefresh={fetchPortfolioData} onAlertClick={handleAlertClick} />
+            {/* Tab bar */}
+            <div className="flex items-center gap-6 border-b border-white/5 mb-6 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+              <button
+                onClick={() => setActiveTab('overview')}
+                className={`pb-3 text-sm font-medium transition-colors whitespace-nowrap cursor-pointer ${
+                  activeTab === 'overview'
+                    ? 'text-[#f9fafb] font-semibold border-b-2 border-[#6366f1] -mb-px'
+                    : 'text-[#6b7280] hover:text-[#f9fafb]'
+                }`}
+              >
+                Overview
+              </button>
+              <button
+                onClick={() => setActiveTab('history')}
+                className={`pb-3 text-sm font-medium transition-colors whitespace-nowrap cursor-pointer ${
+                  activeTab === 'history'
+                    ? 'text-[#f9fafb] font-semibold border-b-2 border-[#6366f1] -mb-px'
+                    : 'text-[#6b7280] hover:text-[#f9fafb]'
+                }`}
+              >
+                History
+              </button>
+              <button
+                onClick={() => setActiveTab('news')}
+                className={`pb-3 text-sm font-medium transition-colors whitespace-nowrap cursor-pointer ${
+                  activeTab === 'news'
+                    ? 'text-[#f9fafb] font-semibold border-b-2 border-[#6366f1] -mb-px'
+                    : 'text-[#6b7280] hover:text-[#f9fafb]'
+                }`}
+              >
+                News
+              </button>
+              <button
+                onClick={() => setActiveTab('watchlist')}
+                className={`pb-3 text-sm font-medium transition-colors whitespace-nowrap cursor-pointer ${
+                  activeTab === 'watchlist'
+                    ? 'text-[#f9fafb] font-semibold border-b-2 border-[#6366f1] -mb-px'
+                    : 'text-[#6b7280] hover:text-[#f9fafb]'
+                }`}
+              >
+                Watchlist
+              </button>
+            </div>
+
+            {/* Tab content */}
+            {activeTab === 'overview' && (
+              <PortfolioDashboard portfolio={portfolio} onRefresh={fetchPortfolioData} onAlertClick={handleAlertClick} />
+            )}
+            {activeTab === 'history' && portfolio && (
+              <PortfolioHistory portfolio={portfolio} />
+            )}
+            {activeTab === 'news' && (
+              <CryptoNews portfolio={portfolio} />
+            )}
+            {activeTab === 'watchlist' && (
+              <Watchlist onAskPulse={(msg) => setPendingAlertMessage(msg)} />
+            )}
           </div>
           
           <div className={`w-full lg:w-[55%] xl:w-[55%] h-[calc(100dvh-69px)] lg:h-full shrink-0 flex flex-col ${compactMode ? 'p-3 pb-4' : 'p-4 md:p-6 pb-6 lg:pb-6'}`}>

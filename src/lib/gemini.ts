@@ -1,6 +1,7 @@
 import { PortfolioData } from './binance';
 import { RiskResult } from './risk';
 import { Alert } from './alerts';
+import { PulseScoreResult } from './pulseScore';
 
 export type MarketContextData = {
   fetchedAt: string;
@@ -15,13 +16,29 @@ export type MarketContextData = {
   }>;
 };
 
-export function buildSystemPrompt(portfolio: PortfolioData, risk: RiskResult, alerts: Alert[], marketContext: MarketContextData | null): string {
+export function buildSystemPrompt(
+  portfolio: PortfolioData, 
+  risk: RiskResult, 
+  alerts: Alert[], 
+  marketContext: MarketContextData | null,
+  pulseScore?: PulseScoreResult | null
+): string {
   const assetList = portfolio.assets.map(a => 
     `- ${a.symbol}: ${a.amount} ($${a.valueUSD.toFixed(2)}) | 24h Change: ${a.changePercent24h.toFixed(2)}%`
   ).join('\n');
 
   const factorList = risk.factors.length > 0 ? risk.factors.map(f => `- ${f}`).join('\n') : "None";
   const alertList = alerts.length > 0 ? alerts.map(a => `- [${a.title}] ${a.message}`).join('\n') : "None";
+
+  let pulseScoreText = "";
+  if (pulseScore) {
+    pulseScoreText = `
+Pulse Score: ${pulseScore.score}/100 — ${pulseScore.label}
+Breakdown: Diversification ${pulseScore.breakdown.diversification}/25 | Performance ${pulseScore.breakdown.performance}/25 | Risk Management ${pulseScore.breakdown.riskManagement}/25 | Stability ${pulseScore.breakdown.stability}/25
+Trend: ${pulseScore.trend}
+Score Insight: ${pulseScore.insight}
+`;
+  }
 
   let marketContextText = "";
   if (marketContext && marketContext.prices.length > 0) {
@@ -50,7 +67,7 @@ Current Risk Score: ${risk.score}/10 — ${risk.label}
 Risk Factors:
 ${factorList}
 Risk Summary: ${risk.summary}
-
+${pulseScoreText}
 Active Alerts:
 ${alertList}
 ${marketContextText}

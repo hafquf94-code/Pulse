@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, memo } from 'react';
-import { Send, Sparkles } from 'lucide-react';
+import { Send, Sparkles, Mic, MicOff } from 'lucide-react';
 import QuickPrompts from './QuickPrompts';
 import { PortfolioData } from '../lib/binance';
 import { generatePersonalisedPrompts } from '../lib/gemini';
@@ -44,7 +44,74 @@ export default function ChatInterface({
   const [personalisedPrompts, setPersonalisedPrompts] = useState<string[]>([]);
   const [hasInjectedFirstMessage, setHasInjectedFirstMessage] = useState(false);
   const [queuedMessage, setQueuedMessage] = useState<string | null>(null);
+  const [speechSupported, setSpeechSupported] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recognition, setRecognition] = useState<any>(null);
+  const [placeholderText, setPlaceholderText] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const SpeechRecognitionClass = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (SpeechRecognitionClass) {
+      setSpeechSupported(true);
+      const recognizer = new SpeechRecognitionClass();
+      recognizer.continuous = false;
+      recognizer.interimResults = true;
+      recognizer.lang = 'en-US';
+
+      recognizer.onresult = (event: any) => {
+        let interimTranscript = '';
+        let finalTranscript = '';
+
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript;
+          } else {
+            interimTranscript += transcript;
+          }
+        }
+
+        if (finalTranscript) {
+          setInputValue(finalTranscript);
+        } else if (interimTranscript) {
+          setInputValue(interimTranscript);
+        }
+      };
+
+      recognizer.onend = () => {
+        setIsRecording(false);
+      };
+
+      recognizer.onerror = (event: any) => {
+        console.warn("Speech recognition error:", event?.error);
+        setIsRecording(false);
+        setPlaceholderText("Voice input error. Please try again or type.");
+        setTimeout(() => {
+          setPlaceholderText("");
+        }, 3000);
+      };
+
+      setRecognition(recognizer);
+    }
+  }, []);
+
+  const toggleRecording = () => {
+    if (!recognition) return;
+    if (isRecording) {
+      recognition.stop();
+      setIsRecording(false);
+    } else {
+      try {
+        setPlaceholderText("Listening... Speak now");
+        recognition.start();
+        setIsRecording(true);
+      } catch (err) {
+        console.error("Error starting speech recognition:", err);
+        setIsRecording(false);
+      }
+    }
+  };
 
   const apiKey = sessionStorage.getItem('BINANCE_API_KEY') || '';
   const apiSecret = sessionStorage.getItem('BINANCE_API_SECRET') || '';
@@ -323,20 +390,37 @@ export default function ChatInterface({
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={isLoading ? "Type a message to send next..." : "Ask about your portfolio..."}
-            className="w-full bg-[#000000] border border-[rgba(255,255,255,0.06)] rounded-xl py-4 px-4 text-sm text-[#f9fafb] focus:outline-none focus:border-[#6366f1] focus:ring-1 focus:ring-[#6366f1]/50 transition-all pr-14 shadow-inner min-h-[52px]" 
+            placeholder={placeholderText || (isRecording ? "Listening... Speak now" : (isLoading ? "Type a message to send next..." : "Ask about your portfolio..."))}
+            className={`w-full bg-[#000000] border border-[rgba(255,255,255,0.06)] rounded-xl py-4 px-4 text-sm text-[#f9fafb] focus:outline-none focus:border-[#6366f1] focus:ring-1 focus:ring-[#6366f1]/50 transition-all ${speechSupported ? 'pr-24' : 'pr-14'} shadow-inner min-h-[52px]`} 
           />
-          <button 
-            onClick={() => {
-              if (!inputValue.trim() || isLoading) return;
-              handleSend(inputValue);
-            }}
-            disabled={isLoading || !inputValue.trim()}
-            className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 flex items-center justify-center rounded-lg text-[#6b7280] hover:text-[#f9fafb] hover:bg-[#6366f1] active:scale-95 disabled:hover:bg-transparent disabled:opacity-50 transition-all duration-200 ease-in-out"
-            aria-label="Send message"
-          >
-            <Send className="w-4 h-4" />
-          </button>
+          <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+            {speechSupported && (
+              <button
+                type="button"
+                onClick={toggleRecording}
+                className={`w-10 h-10 flex items-center justify-center rounded-lg transition-colors cursor-pointer ${
+                  isRecording 
+                    ? 'text-[#ef4444] animate-pulse' 
+                    : 'text-[#6b7280] hover:text-[#f9fafb]'
+                }`}
+                aria-label={isRecording ? "Stop voice recording" : "Start voice recording"}
+                title={isRecording ? "Stop listening" : "Speak your message"}
+              >
+                {isRecording ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+              </button>
+            )}
+            <button 
+              onClick={() => {
+                if (!inputValue.trim() || isLoading) return;
+                handleSend(inputValue);
+              }}
+              disabled={isLoading || !inputValue.trim()}
+              className="w-10 h-10 flex items-center justify-center rounded-lg text-[#6b7280] hover:text-[#f9fafb] hover:bg-[#6366f1] active:scale-95 disabled:hover:bg-transparent disabled:opacity-50 transition-all duration-200 ease-in-out cursor-pointer"
+              aria-label="Send message"
+            >
+              <Send className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </div>
     </div>
