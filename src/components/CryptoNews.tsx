@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { RefreshCw, ExternalLink, Newspaper, AlertCircle } from 'lucide-react';
-import { PortfolioData } from '../lib/binance';
+import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { RefreshCw, ExternalLink, Newspaper, AlertCircle } from "lucide-react";
+import { PortfolioData } from "../lib/binance";
 
 export type NewsItem = {
   id: string;
@@ -22,38 +22,62 @@ export default function CryptoNews({ portfolio }: CryptoNewsProps) {
   const [error, setError] = useState<string | null>(null);
 
   const symbolsQuery = useMemo(() => {
-    if (!portfolio?.assets || portfolio.assets.length === 0) return '';
-    const cleanSymbols = portfolio.assets.map(a => 
-      a.symbol.replace(/USDT$|BUSD$|USDC$/g, '').toUpperCase()
-    ).filter(Boolean);
-    return Array.from(new Set(cleanSymbols)).join(',');
+    if (!portfolio?.assets || portfolio.assets.length === 0) return "";
+    const cleanSymbols = portfolio.assets
+      .map((a) => a.symbol.replace(/USDT$|BUSD$|USDC$/g, "").toUpperCase())
+      .filter(Boolean);
+    return Array.from(new Set(cleanSymbols)).join(",");
   }, [portfolio]);
 
   const userCoins = useMemo(() => {
     if (!portfolio?.assets) return new Set<string>();
     return new Set(
-      portfolio.assets.map(a => a.symbol.replace(/USDT$|BUSD$|USDC$/g, '').toUpperCase())
+      portfolio.assets.map((a) =>
+        a.symbol.replace(/USDT$|BUSD$|USDC$/g, "").toUpperCase(),
+      ),
     );
   }, [portfolio]);
 
-  const fetchNews = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const url = symbolsQuery ? `/api/news?symbols=${encodeURIComponent(symbolsQuery)}` : '/api/news';
-      const res = await fetch(url);
-      if (!res.ok) {
-        throw new Error(`Failed to fetch news (${res.status})`);
+  const fetchNews = useCallback(
+    async (retryCount = 0) => {
+      try {
+        setLoading(true);
+        const url = symbolsQuery
+          ? `/api/news?symbols=${encodeURIComponent(symbolsQuery)}`
+          : "/api/news";
+        const res = await fetch(url);
+        if (!res.ok) {
+          throw new Error(`Failed to fetch news (${res.status})`);
+        }
+        const data = await res.json();
+        setNews(Array.isArray(data) ? data : []);
+        setError(null);
+      } catch (err: any) {
+        if (
+          retryCount < 2 &&
+          (!err?.status || err?.message === "Failed to fetch")
+        ) {
+          setTimeout(
+            () => {
+              fetchNews(retryCount + 1);
+            },
+            1200 * (retryCount + 1),
+          );
+          return;
+        }
+        console.warn("CryptoNews fetch error:", err?.message || err);
+        setNews((prev) => {
+          if (!prev || prev.length === 0) {
+            setError("Couldn't load news right now");
+          }
+          return prev;
+        });
+      } finally {
+        setLoading(false);
       }
-      const data = await res.json();
-      setNews(Array.isArray(data) ? data : []);
-    } catch (err: any) {
-      console.error("CryptoNews fetch error:", err);
-      setError("Couldn't load news right now");
-    } finally {
-      setLoading(false);
-    }
-  }, [symbolsQuery]);
+    },
+    [symbolsQuery],
+  );
 
   useEffect(() => {
     fetchNews();
@@ -61,14 +85,16 @@ export default function CryptoNews({ portfolio }: CryptoNewsProps) {
     return () => clearInterval(interval);
   }, [fetchNews]);
 
-  const getSentimentBorder = (sentiment: "positive" | "negative" | "neutral") => {
+  const getSentimentBorder = (
+    sentiment: "positive" | "negative" | "neutral",
+  ) => {
     switch (sentiment) {
-      case 'positive':
-        return 'border-l-[#22c55e]';
-      case 'negative':
-        return 'border-l-[#ef4444]';
+      case "positive":
+        return "border-l-[#22c55e]";
+      case "negative":
+        return "border-l-[#ef4444]";
       default:
-        return 'border-l-[#6b7280]';
+        return "border-l-[#6b7280]";
     }
   };
 
@@ -77,8 +103,10 @@ export default function CryptoNews({ portfolio }: CryptoNewsProps) {
       {/* Header: "Market News" with a small "Live" badge */}
       <div className="flex items-center justify-between pb-1">
         <div className="flex items-center gap-2.5">
-          <h2 className="text-base font-bold text-[#f9fafb]">Market News</h2>
-          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-[#22c55e]/10 text-[#22c55e] border border-[#22c55e]/20">
+          <h2 className="text-base font-bold text-[var(--text-primary)]">
+            Market News
+          </h2>
+          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-[#22c55e]/10 text-[var(--positive)] border border-[#22c55e]/20">
             <span className="w-1.5 h-1.5 rounded-full bg-[#22c55e] animate-pulse"></span>
             Live
           </span>
@@ -86,10 +114,12 @@ export default function CryptoNews({ portfolio }: CryptoNewsProps) {
         <button
           onClick={fetchNews}
           disabled={loading}
-          className="text-xs text-[#6b7280] hover:text-[#f9fafb] flex items-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer"
+          className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer"
           title="Refresh news"
         >
-          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-[#6366f1]' : ''}`} />
+          <RefreshCw
+            className={`w-3.5 h-3.5 ${loading ? "animate-spin text-[#6366f1]" : ""}`}
+          />
           <span className="hidden sm:inline">Refresh</span>
         </button>
       </div>
@@ -100,7 +130,7 @@ export default function CryptoNews({ portfolio }: CryptoNewsProps) {
           {[1, 2, 3, 4, 5].map((n) => (
             <div
               key={n}
-              className="shimmer bg-[#0d0d0d] border border-[rgba(255,255,255,0.06)] rounded-2xl p-4 h-24"
+              className="shimmer bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-2xl p-4 h-24"
             />
           ))}
         </div>
@@ -108,10 +138,14 @@ export default function CryptoNews({ portfolio }: CryptoNewsProps) {
 
       {/* Error State */}
       {error && !loading && news.length === 0 && (
-        <div className="bg-[#0d0d0d] border border-[rgba(255,255,255,0.06)] rounded-2xl p-8 text-center flex flex-col items-center justify-center min-h-[220px] shadow-sm">
-          <AlertCircle className="w-8 h-8 text-[#ef4444] mb-3" />
-          <p className="text-sm font-semibold text-[#f9fafb] mb-1">Couldn't load news right now</p>
-          <p className="text-xs text-[#6b7280] mb-4">Please check your connection and try again.</p>
+        <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-2xl p-8 text-center flex flex-col items-center justify-center min-h-[220px] shadow-sm">
+          <AlertCircle className="w-8 h-8 text-[var(--negative)] mb-3" />
+          <p className="text-sm font-semibold text-[var(--text-primary)] mb-1">
+            Couldn't load news right now
+          </p>
+          <p className="text-xs text-[var(--text-secondary)] mb-4">
+            Please check your connection and try again.
+          </p>
           <button
             onClick={fetchNews}
             className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-xl bg-[#6366f1]/10 text-[#6366f1] border border-[#6366f1]/20 hover:bg-[#6366f1]/20 transition cursor-pointer"
@@ -124,9 +158,11 @@ export default function CryptoNews({ portfolio }: CryptoNewsProps) {
 
       {/* Empty State */}
       {!loading && !error && news.length === 0 && (
-        <div className="bg-[#0d0d0d] border border-[rgba(255,255,255,0.06)] rounded-2xl p-8 text-center flex flex-col items-center justify-center min-h-[220px] shadow-sm">
-          <Newspaper className="w-8 h-8 text-[#6b7280] mb-3 opacity-60" />
-          <p className="text-sm font-medium text-[#6b7280]">No recent news for your holdings</p>
+        <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-2xl p-8 text-center flex flex-col items-center justify-center min-h-[220px] shadow-sm">
+          <Newspaper className="w-8 h-8 text-[var(--text-secondary)] mb-3 opacity-60" />
+          <p className="text-sm font-medium text-[var(--text-secondary)]">
+            No recent news for your holdings
+          </p>
         </div>
       )}
 
@@ -137,8 +173,8 @@ export default function CryptoNews({ portfolio }: CryptoNewsProps) {
             // Only show coins the user holds
             const displayCoins = item.relatedCoins
               ? item.relatedCoins
-                  .map(c => c.toUpperCase())
-                  .filter(c => userCoins.has(c))
+                  .map((c) => c.toUpperCase())
+                  .filter((c) => userCoins.has(c))
               : [];
 
             return (
@@ -147,19 +183,19 @@ export default function CryptoNews({ portfolio }: CryptoNewsProps) {
                 href={item.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className={`block bg-[#0d0d0d] border border-[rgba(255,255,255,0.06)] border-l-4 ${getSentimentBorder(
-                  item.sentiment
+                className={`block bg-[var(--bg-card)] border border-[var(--border-subtle)] border-l-4 ${getSentimentBorder(
+                  item.sentiment,
                 )} rounded-2xl p-4 overflow-hidden hover:bg-[rgba(255,255,255,0.03)] transition group cursor-pointer`}
               >
                 <div className="flex items-start justify-between gap-3">
-                  <h3 className="text-sm font-medium text-[#f9fafb] line-clamp-2 group-hover:text-white leading-snug flex-1">
+                  <h3 className="text-sm font-medium text-[var(--text-primary)] line-clamp-2 group-hover:text-[var(--text-primary)] leading-snug flex-1">
                     {item.title}
                   </h3>
-                  <ExternalLink className="w-3.5 h-3.5 text-[#6b7280] group-hover:text-[#f9fafb] shrink-0 opacity-60 group-hover:opacity-100 transition-opacity mt-0.5" />
+                  <ExternalLink className="w-3.5 h-3.5 text-[var(--text-secondary)] group-hover:text-[var(--text-primary)] shrink-0 opacity-60 group-hover:opacity-100 transition-opacity mt-0.5" />
                 </div>
 
                 <div className="flex items-center justify-between gap-2 mt-3 pt-2.5 border-t border-[rgba(255,255,255,0.04)]">
-                  <span className="text-xs text-[#6b7280]">
+                  <span className="text-xs text-[var(--text-secondary)]">
                     {item.source} • {item.publishedAt}
                   </span>
 

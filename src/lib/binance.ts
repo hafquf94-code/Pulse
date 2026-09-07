@@ -45,7 +45,8 @@ export async function getAccountInfo(apiKey?: string, apiSecret?: string): Promi
     const response = await axios.get(`${BASE_URL}/api/v3/account?${queryString}&signature=${signature}`, {
       headers: {
         'X-MBX-APIKEY': creds.apiKey
-      }
+      },
+      timeout: 8000
     });
     
     return response.data;
@@ -57,7 +58,7 @@ export async function getAccountInfo(apiKey?: string, apiSecret?: string): Promi
 
 export async function get24hTickerData(): Promise<any> {
   try {
-    const response = await axios.get(`${BASE_URL}/api/v3/ticker/24hr`);
+    const response = await axios.get(`${BASE_URL}/api/v3/ticker/24hr`, { timeout: 8000 });
     return response.data;
   } catch (error) {
     console.error("Error fetching 24h ticker data:", error);
@@ -90,7 +91,7 @@ export async function getPortfolioData(apiKey?: string, apiSecret?: string): Pro
     
     // Fetch price from /api/v3/ticker/price
     try {
-      const priceResponse = await axios.get(`${BASE_URL}/api/v3/ticker/price`);
+      const priceResponse = await axios.get(`${BASE_URL}/api/v3/ticker/price`, { timeout: 8000 });
       if (Array.isArray(priceResponse.data)) {
         priceResponse.data.forEach((p: any) => {
           pricesMap[p.symbol] = parseFloat(p.price);
@@ -128,19 +129,42 @@ export async function getPortfolioData(apiKey?: string, apiSecret?: string): Pro
             change24h = parseFloat(ticker.priceChange) || 0;
             changePercent24h = parseFloat(ticker.priceChangePercent) || 0;
           }
-        } else if (pricesMap[pairBtc] && btcUsdtPrice > 0) {
-          priceUSD = pricesMap[pairBtc] * btcUsdtPrice;
-          const ticker = ticker24hData.find((t: any) => t.symbol === pairBtc);
-          if (ticker) {
-            change24h = (parseFloat(ticker.priceChange) || 0) * btcUsdtPrice;
-            changePercent24h = parseFloat(ticker.priceChangePercent) || 0;
+        } else {
+          // Direct fallback for unmapped pairs like HMSTRUSDT
+          try {
+            console.log(`Trying direct fetch for ${pairUsdt}`);
+            const directPriceRes = await axios.get(`${BASE_URL}/api/v3/ticker/price?symbol=${pairUsdt}`, { timeout: 2000 });
+            if (directPriceRes.data && directPriceRes.data.price) {
+              priceUSD = parseFloat(directPriceRes.data.price);
+              pricesMap[pairUsdt] = priceUSD;
+              
+              const direct24hRes = await axios.get(`${BASE_URL}/api/v3/ticker/24hr?symbol=${pairUsdt}`, { timeout: 2000 });
+              if (direct24hRes.data) {
+                change24h = parseFloat(direct24hRes.data.priceChange) || 0;
+                changePercent24h = parseFloat(direct24hRes.data.priceChangePercent) || 0;
+              }
+            }
+          } catch (error) {
+            // Silently fall through to BTC/BNB pairs if USDT pair is completely invalid
+            console.log(`Direct fetch failed for ${pairUsdt}`);
           }
-        } else if (pricesMap[pairBnb] && bnbUsdtPrice > 0) {
-          priceUSD = pricesMap[pairBnb] * bnbUsdtPrice;
-          const ticker = ticker24hData.find((t: any) => t.symbol === pairBnb);
-          if (ticker) {
-            change24h = (parseFloat(ticker.priceChange) || 0) * bnbUsdtPrice;
-            changePercent24h = parseFloat(ticker.priceChangePercent) || 0;
+
+          if (priceUSD === 0) {
+            if (pricesMap[pairBtc] && btcUsdtPrice > 0) {
+              priceUSD = pricesMap[pairBtc] * btcUsdtPrice;
+              const ticker = ticker24hData.find((t: any) => t.symbol === pairBtc);
+              if (ticker) {
+                change24h = (parseFloat(ticker.priceChange) || 0) * btcUsdtPrice;
+                changePercent24h = parseFloat(ticker.priceChangePercent) || 0;
+              }
+            } else if (pricesMap[pairBnb] && bnbUsdtPrice > 0) {
+              priceUSD = pricesMap[pairBnb] * bnbUsdtPrice;
+              const ticker = ticker24hData.find((t: any) => t.symbol === pairBnb);
+              if (ticker) {
+                change24h = (parseFloat(ticker.priceChange) || 0) * bnbUsdtPrice;
+                changePercent24h = parseFloat(ticker.priceChangePercent) || 0;
+              }
+            }
           }
         }
       }
