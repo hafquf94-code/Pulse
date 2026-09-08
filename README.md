@@ -48,4 +48,26 @@ GEMINI_API_KEY=your_gemini_api_key_here
 
 ## Screenshots
 
-*(Placeholder - Add screenshots of the landing page, dashboard, and chat interface here)*
+### Landing Page
+Clean hero with "Think with Pulse." heading, Connect Binance and Try Demo Portfolio CTAs, trust badges, and PWA install prompt.
+
+### Dashboard — Overview
+Live portfolio data with Pulse Score breakdown, Risk Score, Pulse Noticed alerts with Ask Pulse buttons, allocation donut chart, and holdings table.
+
+### Morning Briefing
+AI-generated daily briefing with portfolio overview, top movers, risk pulse, market context and Pulse Thought sections.
+
+### Chat Interface  
+Personalised quick prompts based on actual holdings, voice input, streaming AI responses grounded in live portfolio data.
+
+### Portfolio History
+24h/7d/30d area chart showing portfolio performance over time with Period High, Low and Change stats.
+
+### Market News
+Live crypto news from Cointelegraph and Decrypt with sentiment-coded colored borders and one-click article access.
+
+### Watchlist
+Real-time price monitoring for any coin with 24h high/low, Ask Pulse integration, and auto-refresh every 60 seconds.
+
+### Notification Center
+Persistent notification inbox collecting all Guardian alerts, price alert triggers and system notifications.
